@@ -12,3 +12,6 @@
 	- Break -> Pin 9
 	- Turn Left -> Pin 7
 	- Turn Right -> Pin 8
+
+Timer1 for SignalBlink
+- Timer Calculator : http://www.arduinoslovakia.eu/application/timer-calculator

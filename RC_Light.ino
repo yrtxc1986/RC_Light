@@ -1,141 +1,99 @@
-bool isDebug = false;
 
-const long signalInterval = 500;
+int LED_Head = 6;
+int LED_Left = 7;
+int LED_Right = 4;
+int LED_Break = 5;
+int LED_Back = 3;
 
-int pin_Steering_Channel = 2; //Steering Channel
-int pin_Thottle_Channel = 3; //Thottle Channel
+int Break_Brightness = 0;
 
-int Head_LED = 10;
-int Back_LED = 11;
-int Break_LED = 9;
-
-int Turn_L_LED = 7;
-int Turn_R_LED = 8;
-
-int Steering_Buffer = 50;
-int Thottle_Buffer = 50;
-int Speed_Buffer = 0;//5;
-int Last_Thottle = 0;
-
-// read channel values ch1 ch2 ch3 1000~2000 ns
-int Thottle_Value;
-int Steering_Value;
-
-bool isCenter = false;
-int Steering_Center = 0;
-int Thottle_Center = 0;
+bool SignalOnOff = false;
 
 boolean Forward;
-boolean Backward;
-boolean Break;
-boolean Left;
-boolean Right;
+boolean Backward = true;
+boolean Break = false;
+boolean Left = true;
+boolean Right = true;
 boolean After_Forward;
 
+boolean LightOn = true;
+
+
+int ch1_value = 0;
+int ch2_value = 0;
+int ch3_value = 0;
+int ch4_value = 0;
+
+void setupPortBPinChangeInterrupt() {
+
+  PCICR |= (1 << PCIE0);    //enable PCMSK0 scan
+  //PCMSK0 |= (1 << PCINT0);  //Set PCINT0 (digital input 8) to trigger an interrupt on state change.
+  //PCMSK0 |= (1 << PCINT1);  //Set PCINT0 (digital input 9) to trigger an interrupt on state change.
+  PCMSK0 |= (1 << PCINT2);  //Set PCINT0 (digital input 10) to trigger an interrupt on state change.
+  PCMSK0 |= (1 << PCINT3);  //Set PCINT0 (digital input 11) to trigger an interrupt on state change.
+  PCMSK0 |= (1 << PCINT4);  //Set PCINT0 (digital input 12) to trigger an interrupt on state change.
+  //PCMSK0 |= (1 << PCINT5);  //Set PCINT0 (digital input 13) to trigger an interrupt on state change.
+}
+
+void setupTimer1() {
+  noInterrupts();
+  // Clear registers
+  TCCR1A = 0;
+  TCCR1B = 0;
+  TCNT1 = 0;
+
+  // 2 Hz (8000000/((15624+1)*256))
+  OCR1A = 15624;
+  // CTC
+  TCCR1B |= (1 << WGM12);
+  // Prescaler 256
+  TCCR1B |= (1 << CS12);
+  // Output Compare Match A Interrupt Enable
+  TIMSK1 |= (1 << OCIE1A);
+  interrupts();
+}
+
+void PinSetup() {
+  pinMode(LED_BUILTIN, OUTPUT);
+  pinMode(LED_Head, OUTPUT);
+  pinMode(LED_Left, OUTPUT);
+  pinMode(LED_Right, OUTPUT);
+  pinMode(LED_Break, OUTPUT);
+  pinMode(LED_Back, OUTPUT);
+}
+
+// the setup function runs once when you press reset or power the board
 void setup() {
-  // put your setup code here, to run once:
-  pinMode(pin_Steering_Channel, INPUT); // //Left Right Channel
-  pinMode(pin_Thottle_Channel, INPUT); // Channel 2
-
-  attachInterrupt(digitalPinToInterrupt(pin_Steering_Channel), CH1, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(pin_Thottle_Channel), CH2, CHANGE);
-
-  pinMode(Head_LED, OUTPUT);
-  pinMode(Turn_L_LED, OUTPUT);
-  pinMode(Turn_R_LED, OUTPUT);
-  pinMode(Break_LED, OUTPUT);
-  pinMode(Back_LED, OUTPUT);
-
-  if (isDebug) {
-    Serial.begin(9600);
-  }
+  PinSetup();
+  setupPortBPinChangeInterrupt();
+  setupTimer1();
+  Serial.begin(9600);
 }
 
-void loop() {
+void updateLED() {
+  //digitalWrite(LED_BUILTIN, LED_Status);
+  digitalWrite(LED_Head, LightOn);
 
-  if (!isCenter) {
-    CenterCalc();
+  digitalWrite(LED_Left, Left && SignalOnOff);
+  digitalWrite(LED_Right, Right && SignalOnOff);
+  digitalWrite(LED_Back, Backward);
+
+  Break_Brightness = LightOn ? 50 : 0;
+  if (Break) {
+    Break_Brightness = 255;
   }
-
-  calcSignalOnOff();
-  TrunCheck();
-  TottleCheck();
-
-  if (isDebug) {
-    printChannelValue();
-    printCarAction();
-    delay(200);
-  }
-
-  updateLED();
-
+  analogWrite(LED_Break, Break_Brightness);
 }
 
-bool signalOFF = true;
-unsigned long previousMillis = 0;
+int Thottle_Center = 1500;
+int Thottle_Buffer = 30;
+int Steering_Center = 1500;
+int Steering_Buffer = 10;
+int Last_Thottle;
 
-void calcSignalOnOff() {
-  unsigned long currentMillis = millis();
-  if (currentMillis - previousMillis >= signalInterval) {
-    // save the last time you blinked the LED
-    previousMillis = currentMillis;
-
-    if (signalOFF) {
-      signalOFF = false;
-    } else {
-      signalOFF = true;
-    }
-  }
-}
-
-int CH1_Start;
-int CH2_Start;
-
-void CH1() {
-  int time = micros();
-  int stat = digitalRead(pin_Steering_Channel);
-
-  if (stat == HIGH) {
-    CH1_Start = time;
-  } else {
-    Steering_Value = time - CH1_Start;
-  }
-}
-
-void CH2() {
-  int time = micros();
-  int stat = digitalRead(pin_Thottle_Channel);
-
-  if (stat == HIGH) {
-    CH2_Start = time;
-  } else {
-    Thottle_Value = time - CH2_Start;
-  }
-}
-
-void TrunCheck() {
-  //Check Trun
-  int Steering =  Steering_Value - Steering_Center;
-  if (abs(Steering) < Steering_Buffer) {
-    {
-      Left = false;
-      Right = false;
-    }
-  } else if (Steering > 0 ) {
-    {
-      Left = false;
-      Right = true;
-    }
-  } else {
-    {
-      Left = true;
-      Right = false;
-    }
-  }
-}
 void TottleCheck() {
   // Check Thottle
-  int Thottle =  Thottle_Value - Thottle_Center;
+  int Thottle =  ch2_value - Thottle_Center;
 
   if (abs(Thottle) < Thottle_Buffer) {
     {
@@ -149,7 +107,7 @@ void TottleCheck() {
     Backward = false;
     After_Forward = true;
 
-    if ((Last_Thottle - Thottle - Speed_Buffer) > 0) {
+    if ((Last_Thottle - Thottle - Thottle_Buffer) > 0) {
       Break = true;
     } else {
       Break = false;
@@ -172,83 +130,96 @@ void TottleCheck() {
   Last_Thottle = Thottle;
 }
 
-
-void CenterCalc() {
-  if (Steering_Value > 0) {
-    isCenter = true;
-    Thottle_Center = Thottle_Value;
-    Steering_Center = Steering_Value;
-  }
-}
-
-void printChannelValue() {
-
-  Serial.print("Receiver Value; Steering:"); // Print the value of
-  Serial.print(Steering_Value);        // each channel
-  Serial.print("\tThottle:");
-  Serial.print(Thottle_Value);
-  Serial.println();
-
-  Serial.print("Center Value; Steering:");
-  Serial.print(Steering_Center);
-  Serial.print("\tThottle:");
-  Serial.print(Thottle_Center);
-  Serial.println();
-}
-
-void printCarAction() {
-
-  Serial.print("Car Dir: Forward:");
-  Serial.print(Forward);
-  Serial.print("\tBackward:");
-  Serial.print(Backward);
-  Serial.print("\tBreak:");
-  Serial.print(Break);
-  Serial.print("\tLeft:");
-  Serial.print(Left);
-  Serial.print("\tRight:");
-  Serial.print(Right);
-  Serial.println();
-
-}
-
-void updateLED() {
-  int Head_LED_Brightness =   0;
-  int Break_LED_Brightness = 0;
-
-  if (Forward) {
-    Head_LED_Brightness = Head_LED_Brightness + 127;
-  }
-  if (Break) {
-    Break_LED_Brightness = Break_LED_Brightness + 127;
-  }
-  analogWrite(Head_LED, Head_LED_Brightness);
-  analogWrite(Break_LED, Break_LED_Brightness);
-
-  if (Backward) {
-    digitalWrite(Back_LED, HIGH);
-  } else {
-    digitalWrite(Back_LED, LOW);
-  }
-
-
-
-  if (Left) {
-    if (signalOFF) {
-      digitalWrite(Turn_L_LED, LOW);
-    } else {
-      digitalWrite(Turn_L_LED, HIGH);
+void TrunCheck() {
+  //Check Trun
+  int Steering =  ch1_value - Steering_Center;
+  if (abs(Steering) < Steering_Buffer) {
+    {
+      Left = false;
+      Right = false;
+    }
+  } else if (Steering > 0 ) {
+    {
+      Left = false;
+      Right = true;
     }
   } else {
-    digitalWrite(Turn_L_LED, LOW);
-  }
-  if (Right) {
-    if (signalOFF) {
-      digitalWrite(Turn_R_LED, LOW);
-    } else {
-      digitalWrite(Turn_R_LED, HIGH);
+    {
+      Left = true;
+      Right = false;
     }
-  } else {
-    digitalWrite(Turn_R_LED, LOW);
+  }
+}
+
+
+// the loop function runs over and over again forever
+void loop() {
+
+  LightOn = (ch3_value > 1700);
+
+  TrunCheck();
+  TottleCheck();
+  if (!Break && !Backward) {
+    Break = (ch2_value < 1700);
+  }
+
+  Serial.print("CH1:");
+  Serial.print(ch1_value);
+  Serial.print("\tCH2:");
+  Serial.print(ch2_value);
+  Serial.print("\tCH3:");
+  Serial.print(ch3_value);
+  Serial.println("");
+}
+
+
+ISR(TIMER1_COMPA_vect) {
+  SignalOnOff = !SignalOnOff;
+  updateLED();
+}
+
+
+//We create variables for the time width values of each PWM input signal
+unsigned long counter_1, counter_2, counter_3, counter_4, current_count;
+
+//We create 4 variables to stopre the previous value of the input signal (if LOW or HIGH)
+byte last_CH1_state, last_CH2_state, last_CH3_state, last_CH4_state;
+
+ISR(PCINT0_vect) {
+  current_count = micros();
+  ///////////////////////////////////////Channel 1
+  if (PINB & B00000100) {                            //We make an AND with the pin state register, We verify if pin 10 is HIGH???
+    if (last_CH1_state == 0) {                       //If the last state was 0, then we have a state change...
+      last_CH1_state = 1;                            //Store the current state into the last state for the next loop
+      counter_1 = current_count;                     //Set counter_1 to current value.
+    }
+  }
+  else if (last_CH1_state == 1) {                    //If pin 8 is LOW and the last state was HIGH then we have a state change
+    last_CH1_state = 0;                              //Store the current state into the last state for the next loop
+    ch1_value = current_count - counter_1;   //We make the time difference. Channel 1 is current_time - timer_1.
+  }
+
+  ///////////////////////////////////////Channel 2
+  if (PINB & B00001000 ) {                           //pin D11 -- B00001000
+    if (last_CH2_state == 0) {
+      last_CH2_state = 1;
+      counter_2 = current_count;
+    }
+  }
+  else if (last_CH2_state == 1) {
+    last_CH2_state = 0;
+    ch2_value = current_count - counter_2;
+  }
+
+  ///////////////////////////////////////Channel 3
+  if (PINB & B00010000 ) {                           //pin D12 -- B00010000
+    if (last_CH3_state == 0) {
+      last_CH3_state = 1;
+      counter_3 = current_count;
+    }
+  }
+  else if (last_CH3_state == 1) {
+    last_CH3_state = 0;
+    ch3_value = current_count - counter_3;
   }
 }
