@@ -1,6 +1,6 @@
 
 int LED_Head = 6;
-int LED_Left = 7;
+int LED_Left = 2;
 int LED_Right = 4;
 int LED_Break = 5;
 int LED_Back = 3;
@@ -28,7 +28,7 @@ void setupPortBPinChangeInterrupt() {
 
   PCICR |= (1 << PCIE0);    //enable PCMSK0 scan
   //PCMSK0 |= (1 << PCINT0);  //Set PCINT0 (digital input 8) to trigger an interrupt on state change.
-  //PCMSK0 |= (1 << PCINT1);  //Set PCINT0 (digital input 9) to trigger an interrupt on state change.
+  PCMSK0 |= (1 << PCINT1);  //Set PCINT0 (digital input 9) to trigger an interrupt on state change.
   PCMSK0 |= (1 << PCINT2);  //Set PCINT0 (digital input 10) to trigger an interrupt on state change.
   PCMSK0 |= (1 << PCINT3);  //Set PCINT0 (digital input 11) to trigger an interrupt on state change.
   PCMSK0 |= (1 << PCINT4);  //Set PCINT0 (digital input 12) to trigger an interrupt on state change.
@@ -43,7 +43,9 @@ void setupTimer1() {
   TCNT1 = 0;
 
   // 2 Hz (8000000/((15624+1)*256))
-  OCR1A = 15624;
+  // 4 Hz (8000000/((7812+1)*256))
+  OCR1A = 15624
+  ;
   // CTC
   TCCR1B |= (1 << WGM12);
   // Prescaler 256
@@ -71,7 +73,6 @@ void setup() {
 }
 
 void updateLED() {
-  //digitalWrite(LED_BUILTIN, LED_Status);
   digitalWrite(LED_Head, LightOn);
 
   digitalWrite(LED_Left, Left && SignalOnOff);
@@ -88,7 +89,7 @@ void updateLED() {
 int Thottle_Center = 1500;
 int Thottle_Buffer = 30;
 int Steering_Center = 1500;
-int Steering_Buffer = 10;
+int Steering_Buffer = 30;
 int Last_Thottle;
 
 void TottleCheck() {
@@ -163,15 +164,18 @@ void loop() {
     Break = (ch2_value < 1700);
   }
 
-  Serial.print("CH1:");
-  Serial.print(ch1_value);
-  Serial.print("\tCH2:");
-  Serial.print(ch2_value);
-  Serial.print("\tCH3:");
-  Serial.print(ch3_value);
-  Serial.println("");
+  // printvalue();
 }
 
+
+void printvalue(){
+  
+  Serial.print("CH1: "); Serial.print(ch1_value); Serial.print("  ");
+  Serial.print("CH2: "); Serial.print(ch2_value); Serial.print("  ");
+  Serial.print("CH3: "); Serial.print(ch3_value); Serial.print("  ");
+  Serial.print("CH4: "); Serial.print(ch4_value); Serial.print("  ");
+  Serial.println("");
+}
 
 ISR(TIMER1_COMPA_vect) {
   SignalOnOff = !SignalOnOff;
@@ -221,5 +225,16 @@ ISR(PCINT0_vect) {
   else if (last_CH3_state == 1) {
     last_CH3_state = 0;
     ch3_value = current_count - counter_3;
+  }
+    ///////////////////////////////////////Channel 4
+  if (PINB & B00000010 ) {                           //pin D9 -- B00000010
+    if (last_CH4_state == 0) {
+      last_CH4_state = 1;
+      counter_4 = current_count;
+    }
+  }
+  else if (last_CH4_state == 1) {
+    last_CH4_state = 0;
+    ch4_value = current_count - counter_4;
   }
 }
