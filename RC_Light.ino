@@ -1,4 +1,3 @@
-
 int LED_Head = 6;
 int LED_Left = 2;
 int LED_Right = 4;
@@ -28,7 +27,7 @@ void setupPortBPinChangeInterrupt() {
 
   PCICR |= (1 << PCIE0);    //enable PCMSK0 scan
   //PCMSK0 |= (1 << PCINT0);  //Set PCINT0 (digital input 8) to trigger an interrupt on state change.
-  PCMSK0 |= (1 << PCINT1);  //Set PCINT0 (digital input 9) to trigger an interrupt on state change.
+  //PCMSK0 |= (1 << PCINT1);  //Set PCINT0 (digital input 9) to trigger an interrupt on state change.
   PCMSK0 |= (1 << PCINT2);  //Set PCINT0 (digital input 10) to trigger an interrupt on state change.
   PCMSK0 |= (1 << PCINT3);  //Set PCINT0 (digital input 11) to trigger an interrupt on state change.
   PCMSK0 |= (1 << PCINT4);  //Set PCINT0 (digital input 12) to trigger an interrupt on state change.
@@ -95,7 +94,21 @@ int Last_Thottle;
 void TottleCheck() {
   // Check Thottle
   int Thottle =  ch2_value - Thottle_Center;
-
+  if (abs(Thottle) < Thottle_Buffer) {
+      Forward = false;
+      Backward = false;
+      Break = true;
+  }else if (Thottle < 0 ) {
+      Forward = false;
+      Backward = true;
+      Break = false;
+  }else{
+   Forward = true;
+   Backward = false;
+   Break = false;
+  }
+  
+/*
   if (abs(Thottle) < Thottle_Buffer) {
     {
       Forward = false;
@@ -128,7 +141,7 @@ void TottleCheck() {
     }
 
   }
-  Last_Thottle = Thottle;
+  Last_Thottle = Thottle;*/
 }
 
 void TrunCheck() {
@@ -160,11 +173,9 @@ void loop() {
 
   TrunCheck();
   TottleCheck();
-  if (!Break && !Backward) {
-    Break = (ch2_value < 1700);
-  }
+ 
 
-  // printvalue();
+   printvalue();
 }
 
 
